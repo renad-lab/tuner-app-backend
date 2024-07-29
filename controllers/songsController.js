@@ -1,85 +1,118 @@
+// DEPENDENCIES
 const express = require("express");
-const songs = express.Router();
+const songs = express.Router({ mergeParams: true });
+
+const { getPlaylist } = require("../queries/playlists");
+
+// Queries
 const {
   getAllSongs,
   getSong,
   createSong,
   updateSong,
   deleteSong,
-} = require("../queries/song");
-const { checkName, checkBoolean } = require("../validations/checkSongs");
+} = require("../queries/songs");
 
-// Function to check if ID is valid
-const isValidId = async (id) => {
-  const song = await getSong(id);
-  return !!song;
-};
+const { checkName } = require("../validations/checkPlaylists");
 
 // INDEX
+// e.g., localhost:4001/playlists/1/songs
+// songs.get("/", async (req, res) => {
+//   const { playlist_id } = req.params;
+//   try {
+//     const songsList = await getAllSongs(playlist_id); //take out playlist_id
+//     const playlist = await getPlaylist(playlist_id);
+//     if (playlist) {
+//       res.status(200).json({ ...playlist, songs: songsList });
+//     } else {
+//       res.status(404).json({ error: "Playlist not found" });
+//     }
+//   } catch (error) {
+//     res.status(500).json({ error: error.message });
+//   }
+// });
+
 songs.get("/", async (req, res) => {
-  const { order, is_favorite } = req.query;
+  const { playlist_id } = req.params; // Get the playlist_id from the request parameters
   try {
-    const allSongs = await getAllSongs(order, is_favorite);
-    if (allSongs.length > 0) {
-      res.status(200).json(allSongs);
-    } else {
-      res.status(404).json({ error: "No songs found" });
+    let songsList;
+
+    // Check if playlist_id is provided
+    if (playlist_id) {
+      const playlist = await getPlaylist(playlist_id); // Try to get the playlist
+
+      if (playlist) {
+        // If the playlist exists, get the songs for that playlist
+        songsList = await getAllSongs(playlist_id);
+        return res.status(200).json({ ...playlist, songs: songsList });
+      }
     }
+
+    // If no playlist_id is provided or the playlist doesn't exist, get all songs
+    songsList = await getAllSongs();
+    res.status(200).json({ songs: songsList });
   } catch (error) {
+    // Handle any errors that occur during database operations
     res.status(500).json({ error: error.message });
   }
 });
 
 // SHOW
+// e.g., localhost:4001/playlists/1/songs/1
 songs.get("/:id", async (req, res) => {
+  const { playlist_id, id } = req.params;
   try {
-    const { id } = req.params;
-    const isValid = await isValidId(id);
-    if (!isValid) {
-      return res.status(404).json({ error: "Song not found" });
-    }
     const song = await getSong(id);
-    res.status(200).json(song);
+    const playlist = await getPlaylist(playlist_id);
+    if (song && playlist) {
+      res.status(200).json({ ...playlist, song });
+    } else {
+      res.status(404).json({ error: "Song or playlist not found" });
+    }
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
 // CREATE
-songs.post("/", checkName, checkBoolean, async (req, res) => {
+// e.g., POST to localhost:4001/playlists/1/songs
+songs.post("/", checkName, async (req, res) => {
+  const { playlist_id } = req.params;
   try {
-    const newSong = await createSong(req.body);
+    const newSong = await createSong({ ...req.body, playlist_id });
     res.status(201).json(newSong);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(400).json({ error: error.message });
   }
 });
 
 // UPDATE
-songs.put("/:id", checkName, checkBoolean, async (req, res) => {
+// e.g., PUT to localhost:4001/playlists/1/songs/1
+songs.put("/:id", checkName, async (req, res) => {
+  const { playlist_id, id } = req.params;
   try {
-    const { id } = req.params;
-    const isValid = await isValidId(id);
-    if (!isValid) {
-      return res.status(404).json({ error: "Song not found" });
+    const updatedSong = await updateSong(id, { playlist_id, ...req.body });
+    if (updatedSong) {
+      res.status(200).json(updatedSong);
+    } else {
+      res.status(404).json({ error: "Song not found" });
     }
-    const updatedSong = await updateSong(id, req.body);
-    res.status(200).json(updatedSong);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
 // DELETE
+// e.g., DELETE to localhost:4001/playlists/1/songs/1
 songs.delete("/:id", async (req, res) => {
+  const { id } = req.params;
   try {
-    const { id } = req.params;
-    const isValid = await isValidId(id);
-    if (!isValid) {
-      return res.status(404).json({ error: "Song not found" });
-    }
     const deletedSong = await deleteSong(id);
-    res.status(200).json(deletedSong);
+    if (deletedSong) {
+      res.status(200).json(deletedSong);
+    } else {
+      res.status(404).json({ error: "Song not found" });
+    }
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
